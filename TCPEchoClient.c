@@ -99,8 +99,7 @@ void sendFile(int sock, char *servIP){
 
 	/*send file name and file size*/
 	sendMsg(sock, fName, "FileName send Error");
-	write(sock, &fSize, sizeof(fSize));
-	//send(sock, &fSize, sizeof(fSize), 0);
+	send(sock, &fSize, sizeof(fSize), 0);
 	printf("Send: %d bytes\n", fSize);
 
 	printf("Sending => ###############\n");
@@ -134,21 +133,27 @@ char* sendMsg(int sock, char *str, char *errorMsg){
 	else{
 		printf("%s \n", str);
 	}
+	/*
+	if (send(clntSock, echoBuffer, recvMsgSize, 0) <0)
+		DieWithError(errorMsg);
+	
 	if (write(sock, str, strlen(str)) < 0)
 		DieWithError(errorMsg);
-	/*
+	*/
 	if (send(sock, str, strlen(str), 0) <0)
 		DieWithError(errorMsg);
-	*/
+	
 	return str;
 }
 
 /*receieve message from server*/
 void recvMsg(int sock){
 	char buff[RCVBUFSIZE];
-	int n = 0;
-	if ((n = read(sock, buff, RCVBUFSIZE))>0)
-		buff[n] = '\0';
+	int recvMsgSize; /* Size of received message */
+
+	if ((recvMsgSize = recv(sock, buff, RCVBUFSIZE, 0)) < 0)
+		DieWithError("recv() failed");
+	buff[recvMsgSize] = '\0';
 
 	printf("recv: %s\n", buff);
 }
@@ -210,5 +215,3 @@ void rcvEcho(int echoStringLen,int sock){
     	printf("%s \n",echoBuffer); /* Print the echo buffer */
 	}
 }
-
-

@@ -110,10 +110,12 @@ void writeHistory(char *echoMsg){
 /*receive message and return msg*/
 char* recvMsg(int sock){
 	char buff[RCVBUFSIZE];
-	int n = 0;
-	if ((n = read(sock, buff, RCVBUFSIZE))>0){
-		buff[n] = '\0';
-	}
+	int recvMsgSize; /* Size of received message */
+
+	if ((recvMsgSize = recv(sock, buff, RCVBUFSIZE, 0)) < 0)
+		DieWithError("recv() failed");
+	buff[recvMsgSize] = '\0';
+
 	char *rtnBuff = buff;
 	return rtnBuff;
 }
