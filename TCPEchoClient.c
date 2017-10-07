@@ -9,14 +9,16 @@
 #include <arpa/inet.h>
 void DieWithError(char *errorMessage); /* Error handling function */
 void rcvEcho(int echoStringLen, int sock);
-void recvMsg(int sock);
+char* recvMsg(int sock);
 void sendEcho(int sock);
 void sendCmd(int sock, char cmd);
 char* sendMsg(int sock, char *str, char *errorMsg);
 void sendFile(int sock, char *servIP);
-size_t getFileSize(FILE *fp);
+int getFileSize(FILE *fp);
+void recvFile(int sock);
 
 int main(int argc, char *argv[]) {
+
 	int sock; /* Socket descriptor */
 	struct sockaddr_in echoServAddr; /* Echo server address */
 	char *servIP; /* Server IP address (dotted quad) */
@@ -32,7 +34,7 @@ int main(int argc, char *argv[]) {
 	printf("Port: ");
 	//scanf("%hd",&echoServPort);
 	printf("55555\n");
-	servIP = "127.0.0.1"; /* First arg: server IP address (dotted quad) */	
+	strcpy(servIP,"127.0.0.1"); /* First arg: server IP address (dotted quad) */	
 	echoServPort = 55555;
 	connString = "hello";	
 	
@@ -57,64 +59,117 @@ int main(int argc, char *argv[]) {
 		char cmd = 0;
 		printf("command [  m)sg  p)ut  g)et  l)s  r)ls  e)xit  ] ->");
 		scanf("%c",&cmd);
+
 		getchar();
 		sendCmd(sock, cmd);
 		if (cmd == 'm'){
-			
 			sendEcho(sock);
+			getchar();
 		}
 		else if (cmd == 'p'){
 			sendFile(sock, servIP);
+			getchar();
 		}
-		getchar();
+		else if (cmd == 'g'){
+			recvFile(sock);
+		}
+		else if (cmd == 'l'){
+
+		}
+		else if (cmd == 'r'){
+
+		}
+		else{
+			break;
+		}
+		
 	}
 
-	printf("\n"); /* Print a final linefeed */
-	free(connString);
 	free(servIP);
 	close(sock);
 	exit(0);
 }
 
+void recvFile(int sock){
+	char* fName;//[FileName];
+	int fSize = 0, recvSize = 0, bufSize = 0;
+	char buf[RCVBUFSIZE];
+	FILE *fp;
+	char path[FileName] = "./";
+	char* fsize;
+	int n = 0;
+
+	/*get file name and file size*/
+	fName = recvMsg(sock);
+	strcat(path, fName);
+
+	fsize = recvMsg(sock);
+	fSize = atoi(fsize);
+
+	/* check whether file is exist */
+	if (access(path, F_OK) == 0){
+		strcpy(fName, "temp.txt");
+	}
+
+	fp = fopen(fName, "wb");
+	if (fp == NULL)
+		DieWithError("File Open Error");
+
+	/* receive the file*/
+	bufSize = RCVBUFSIZE;
+	while (fSize != 0){
+		if (fSize < RCVBUFSIZE)
+			bufSize = fSize;
+
+		recvSize = recv(sock, buf, bufSize, 0);
+		fSize -= recvSize;
+		fwrite(buf, sizeof(char), recvSize, fp);
+		recvSize = 0;
+	}
+
+	fclose(fp);
+}
+
 void sendFile(int sock, char *servIP){
 	FILE *fp;
-	size_t fSize = 0, totalSize = 0, sendSize = 0;
+	int fSize = 0, totalSize = 0, sendSize = 0;
 	char fName[FileName];
 	char buf[RCVBUFSIZE];
 
 	/*enter file name*/
 	printf("Filename to put to server -> ");
-	scanf("%s", fName);
-	//read(0, fName, sizeof(fName));
-	//gets(fName);
+	scanf("%s", fName);	
 	
-
 	/* open file*/
 	fp = fopen(fName, "rb");
 	if (fp == NULL)
 		DieWithError("File Open Error");
 
-	/* get file size*/
-	fSize = getFileSize(fp);
-
-	/*send file name and file size*/
+	
+	/*send file name*/
 	sendMsg(sock, fName, "FileName send Error");
-	send(sock, &fSize, sizeof(fSize), 0);
-	printf("Send: %d bytes\n", fSize);
+
+	/*send file size as char* */
+	fSize = getFileSize(fp);
+	char fsize[RCVBUFSIZE];
+	sprintf(fsize, "%d", fSize);	
+	sendMsg(sock, fsize, "Send Size Error");
 
 	printf("Sending => ###############\n");
+	/*send file content*/
 	while (totalSize != fSize){
 		sendSize = fread(buf, 1, RCVBUFSIZE, fp);
 		totalSize += sendSize;
 		send(sock, buf, sendSize, 0);
 	}
-	printf("%s(%d bytes) uploading success to %s\n", fName, fSize, servIP);
+	printf("%s(%d bytes) uploading success to %s\n", fName, totalSize, servIP);
+
 	fclose(fp);
 }
 
 /* get file size*/
-size_t getFileSize(FILE *fp){
-	size_t fsize = 0;
+int getFileSize(FILE *fp){
+	int fsize = 0;
 	fseek(fp, 0, SEEK_END);
 	fsize = ftell(fp);
 	fseek(fp, 0, SEEK_SET);
@@ -127,19 +182,11 @@ char* sendMsg(int sock, char *str, char *errorMsg){
 	if (str == NULL){
 		str = (char *)malloc(sizeof(str));
 		scanf("%s", str);
-		//read(0, str, sizeof(str));
-		//gets(str);
 	}
 	else{
 		printf("%s \n", str);
 	}
-	/*
-	if (send(clntSock, echoBuffer, recvMsgSize, 0) <0)
-		DieWithError(errorMsg);
-	
-	if (write(sock, str, strlen(str)) < 0)
-		DieWithError(errorMsg);
-	*/
+
 	if (send(sock, str, strlen(str), 0) <0)
 		DieWithError(errorMsg);
 	
@@ -147,15 +194,18 @@ char* sendMsg(int sock, char *str, char *errorMsg){
 }
 
 /*receieve message from server*/
-void recvMsg(int sock){
+char* recvMsg(int sock){
 	char buff[RCVBUFSIZE];
+	char *rtnBuf;
 	int recvMsgSize; /* Size of received message */
 
-	if ((recvMsgSize = recv(sock, buff, RCVBUFSIZE, 0)) < 0)
+	if ((recvMsgSize = recv(sock, buff, RCVBUFSIZE - 1, 0)) < 0)
 		DieWithError("recv() failed");
 	buff[recvMsgSize] = '\0';
 
-	printf("recv: %s\n", buff);
+	printf("Received: %s \n", buff);
+	rtnBuf = buff;
+	return rtnBuf;
 }
 
 /*send protocol to server*/
@@ -166,7 +216,6 @@ void sendCmd(int sock, char cmd){
 		strcpy(cmdStr, EchoReq);
 	}
 	else if (cmd == 'p'){
-		printf("%s", cmdStr);
 		strcpy(cmdStr, FileUpReq);
 	}
 	else if (cmd == 'g'){
@@ -184,8 +233,6 @@ void sendCmd(int sock, char cmd){
 
 	sendMsg(sock, cmdStr, "sendCmdError");
 	free(cmdStr);
-	
-	//getchar();
 }
 
 /*send echo message to server*/
